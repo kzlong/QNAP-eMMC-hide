@@ -1,0 +1,14 @@
+appname               = qnap-emmc-hide
+version               = 1.0.3
+desc                  = 固定管理界面端口，修复 fnOS 应用窗口空白，保留 eMMC 隐藏与日志功能.
+platform              = x86
+maintainer            = Community
+distributor           = Community
+os_min_ver            = 1.1.8
+display_name          = QNAP eMMC 隐藏
+desktop_appname       = qnap-emmc-hide.Application
+desktop_applaunchname = qnap-emmc-hide.Application
+desktop_uidir         = ui
+service_port          = 9528
+source                = thirdparty
+checksum              = 0d8fcfa0d9da922127aa56b787ba040f

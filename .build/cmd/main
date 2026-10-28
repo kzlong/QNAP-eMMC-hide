@@ -1,0 +1,65 @@
+#!/bin/bash
+set -u
+: "${TRIM_PKGVAR:?TRIM_PKGVAR 未设置}"
+: "${TRIM_APPDEST:?TRIM_APPDEST 未设置}"
+PKGVAR="$TRIM_PKGVAR"
+APPDEST="$TRIM_APPDEST"
+BIN="$APPDEST/bin"
+HIDE_SCRIPT="$BIN/hide-qnap-emmc.sh"
+WEB_SCRIPT="$BIN/web_server.py"
+LOG_FILE="$PKGVAR/hide-qnap-emmc.log"
+WEB_LOG="$PKGVAR/web-ui.log"
+HIDE_PID="$PKGVAR/hide-qnap-emmc.pid"
+WEB_PID="$PKGVAR/web-ui.pid"
+PYTHON="$(command -v python3 2>/dev/null || true)"
+[ -n "$PYTHON" ] || PYTHON="/usr/bin/python3"
+mkdir -p "$PKGVAR"
+export TRIM_PKGVAR="$PKGVAR" TRIM_APPDEST="$APPDEST"
+get_pid() { [ -f "$1" ] && tr -cd '0-9' < "$1"; }
+valid_pid() { local p="$1"; [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
+proc_has() { local p="$1" pattern="$2"; [ -r "/proc/$p/cmdline" ] && tr '\0' ' ' < "/proc/$p/cmdline" | grep -Fq "$pattern"; }
+hide_running() { local p; p="$(get_pid "$HIDE_PID")"; [ -n "$p" ] && valid_pid "$p" && proc_has "$p" "$HIDE_SCRIPT --daemon"; }
+web_running() { local p; p="$(get_pid "$WEB_PID")"; [ -n "$p" ] && valid_pid "$p" && proc_has "$p" "$WEB_SCRIPT"; }
+start_hide() {
+  if hide_running; then echo "隐藏服务已运行 (PID=$(get_pid "$HIDE_PID"))"; return 0; fi
+  rm -f "$HIDE_PID"
+  nohup "$HIDE_SCRIPT" --daemon >> "$LOG_FILE" 2>&1 & echo $! > "$HIDE_PID"
+  sleep 1
+  if hide_running; then echo "隐藏服务已启动 (PID=$(get_pid "$HIDE_PID"))"; return 0; fi
+  echo "隐藏服务启动失败，查看日志：$LOG_FILE" >&2; return 1
+}
+start_web() {
+  if web_running; then echo "管理界面已运行 (PID=$(get_pid "$WEB_PID"))"; return 0; fi
+  rm -f "$WEB_PID"
+  nohup env TRIM_PKGVAR="$PKGVAR" TRIM_APPDEST="$APPDEST" TRIM_MAIN="${TRIM_MAIN:-/var/apps/qnap-emmc-hide/cmd/main}" QNAP_EMMC_PORT="${QNAP_EMMC_PORT:-9528}" "$PYTHON" "$WEB_SCRIPT" >> "$WEB_LOG" 2>&1 & echo $! > "$WEB_PID"
+  sleep 1
+  if web_running; then echo "管理界面已启动"; return 0; fi
+  echo "管理界面启动失败，查看日志：$WEB_LOG" >&2; return 1
+}
+stop_pid() {
+  local file="$1" p; p="$(get_pid "$file")"
+  if [ -n "$p" ] && valid_pid "$p"; then kill "$p" 2>/dev/null || true; fi
+  rm -f "$file"
+}
+case "${1:-}" in
+  start)
+    start_hide || exit 1
+    start_web || exit 1
+    ;;
+  pause|hide-stop)
+    stop_pid "$HIDE_PID"
+    echo "隐藏服务已停止；管理界面保持运行"
+    ;;
+  stop)
+    stop_pid "$HIDE_PID"
+    stop_pid "$WEB_PID"
+    echo "QNAP eMMC 隐藏应用已停止"
+    ;;
+  restart)
+    stop_pid "$HIDE_PID"; stop_pid "$WEB_PID"; sleep 1; start_hide && start_web
+    ;;
+  status)
+    if hide_running; then echo "running"; else echo "stopped"; exit 3; fi
+    ;;
+  *) echo "Usage: $0 {start|pause|stop|restart|status}"; exit 1 ;;
+esac

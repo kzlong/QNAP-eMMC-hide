@@ -1,0 +1,5 @@
+#!/bin/bash
+# fnOS App Center invokes the app lifecycle main command to manage start/stop.
+# Ensure persistent log directory exists; avoid changing system mount rules.
+[ -n "${TRIM_PKGVAR:-}" ] && mkdir -p "$TRIM_PKGVAR" 2>/dev/null || true
+exit 0

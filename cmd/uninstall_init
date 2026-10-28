@@ -1,0 +1,7 @@
+#!/bin/bash
+# Stop app-managed services before removal; eMMC data and partitions are untouched.
+MAIN="/var/apps/qnap-emmc-hide/cmd/main"
+if [ -x "$MAIN" ] && [ -n "${TRIM_PKGVAR:-}" ] && [ -n "${TRIM_APPDEST:-}" ]; then
+  TRIM_PKGVAR="$TRIM_PKGVAR" TRIM_APPDEST="$TRIM_APPDEST" "$MAIN" stop >/dev/null 2>&1 || true
+fi
+exit 0

@@ -1,0 +1,124 @@
+name: Build and Release FPK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fpk-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build, verify, and publish FPK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate release tag and manifest version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "错误：标签必须使用 v主版本.次版本.修订版本 格式，例如 v1.0.3。" >&2
+            exit 1
+          fi
+          MANIFEST_VERSION="$(awk -F= '/^[[:space:]]*version[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' manifest)"
+          if [[ -z "$MANIFEST_VERSION" ]]; then
+            echo "错误：无法从 manifest 读取 version。" >&2
+            exit 1
+          fi
+          if [[ "$TAG_VERSION" != "$MANIFEST_VERSION" ]]; then
+            echo "错误：Git 标签版本 $TAG_VERSION 与 manifest 版本 $MANIFEST_VERSION 不一致。" >&2
+            exit 1
+          fi
+          echo "发布版本校验通过：$MANIFEST_VERSION"
+
+      - name: Check source syntax and configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n build.sh
+          bash -n cmd/main
+          for f in cmd/* wizard/*; do
+            if [[ -f "$f" && -x "$f" ]]; then bash -n "$f"; fi
+          done
+          python3 -m py_compile app/bin/web_server.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cfg = json.loads(Path('app/ui/config').read_text(encoding='utf-8'))
+          entry = cfg['.url']['qnap-emmc-hide.Application']
+          if entry.get('port') != '9528':
+              raise SystemExit(f"ui/config 端口应固定为 9528，实际为 {entry.get('port')!r}")
+          if entry.get('type') != 'iframe' or entry.get('url') != '/':
+              raise SystemExit('ui/config 的 iframe 类型或 url 配置不符合预期')
+          print('ui/config JSON 与固定端口检查通过')
+          PY
+
+      - name: Build FPK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Verify FPK structure and embedded checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          FPK="dist/qnap-emmc-hide-${GITHUB_REF_NAME#v}.fpk"
+          test -s "$FPK"
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          # Normalize directory entries (cmd/ -> cmd) before exact matching.
+          tar -tzf "$FPK" | sed 's:/*$::' > "$TMP/fpk-files.txt"
+          for required in app.tgz manifest cmd config wizard ICON.PNG ICON_256.PNG; do
+            if ! grep -Fxq "$required" "$TMP/fpk-files.txt"; then
+              echo "错误：FPK 缺少必要条目：$required" >&2
+              cat "$TMP/fpk-files.txt" >&2
+              exit 1
+            fi
+          done
+          tar -xzf "$FPK" -C "$TMP" app.tgz manifest
+          EXPECTED="$(awk -F= '/^[[:space:]]*checksum[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' "$TMP/manifest")"
+          ACTUAL="$(md5sum "$TMP/app.tgz" | awk '{print $1}')"
+          if [[ -z "$EXPECTED" || "$EXPECTED" != "$ACTUAL" ]]; then
+            echo "错误：app.tgz MD5 校验失败。manifest=$EXPECTED actual=$ACTUAL" >&2
+            exit 1
+          fi
+          tar -tzf "$TMP/app.tgz" >/dev/null
+          (cd dist && sha256sum "$(basename "$FPK")" > "$(basename "$FPK").sha256")
+          echo "FPK 结构、内部 app.tgz 和 MD5 校验通过：$FPK"
+          cat "dist/$(basename "$FPK").sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          FPK="dist/qnap-emmc-hide-${VERSION}.fpk"
+          NOTES_FILE="$(mktemp)"
+          trap 'rm -f "$NOTES_FILE"' EXIT
+          cat > "$NOTES_FILE" <<EOF
+          ## QNAP eMMC 隐藏 ${VERSION}
+
+          - 自动构建 fnOS FPK 安装包。
+          - 已检查 FPK 文件结构及内部 app.tgz 的 MD5 校验值。
+          - SHA-256 校验文件随安装包一同提供。
+
+          请阅读仓库 README 中的安全说明。管理网页未启用身份认证时，不要将服务端口暴露到公网。
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            "$FPK" \
+            "$FPK.sha256" \
+            --title "QNAP eMMC 隐藏 ${VERSION}" \
+            --notes-file "$NOTES_FILE"

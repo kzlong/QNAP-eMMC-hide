@@ -1,0 +1,10 @@
+[
+  {
+    "stepTitle": "QNAP eMMC 隐藏服务",
+    "items": [
+      {"type": "tips", "helpText": "应用启动后自动卸载 QNAP eMMC 的原厂分区，使其不再显示在 fnOS 文件管理器的外接存储中。"},
+      {"type": "tips", "helpText": "仅处理 /dev/mmcblk0p1、p2、p3、p5、p6、p7 且挂载于 /vol00/RemovableDisk* 的分区；不会格式化或删除数据。"},
+      {"type": "tips", "helpText": "服务会轻量检查挂载状态，以处理 fnOS 后续重新挂载的情况。停止或卸载应用不会自动重新挂载 eMMC。"}
+    ]
+  }
+]

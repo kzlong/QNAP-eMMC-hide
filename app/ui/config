@@ -1,0 +1,18 @@
+{
+  ".url": {
+    "qnap-emmc-hide.Application": {
+      "title": "QNAP eMMC 隐藏",
+      "desc": "查看隐藏服务状态、分区挂载状态和运行日志",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "http",
+      "port": "9528",
+      "url": "/",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "editable",
+        "portPerm": "editable"
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+appname               = qnap-emmc-hide
+version               = 1.0.0
+desc                  = fnos隐藏QNAP原厂eMMC分区挂载
+platform              = x86
+maintainer            = Community
+distributor           = Community
+os_min_ver            = 1.1.8
+display_name          = QNAP eMMC 隐藏
+desktop_appname       = qnap-emmc-hide.Application
+desktop_applaunchname = qnap-emmc-hide.Application
+desktop_uidir         = ui
+service_port          = 9528
+source                = thirdparty
+checksum              = 6a73c80fe03f3c8125422e5936ddfa75
